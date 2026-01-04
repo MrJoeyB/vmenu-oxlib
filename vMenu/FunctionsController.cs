@@ -70,6 +70,8 @@ namespace vMenuClient
         public void SetupTickFunctions()
         {
             // Always needed
+            Tick += FirstSpawnHandler;
+
             Tick += AnimationsAndInteractions;
             Tick += PlayerClothingAnimationsController;
             Tick += MiscRecordingKeybinds;
@@ -215,6 +217,93 @@ namespace vMenuClient
         /// Run all tasks for the Player Options menu.
         /// </summary>
         /// <returns></returns>
+        /// private bool firstSpawn = true;
+        private bool firstSpawn = true;
+
+        private async Task FirstSpawnHandler()
+        {
+            if (firstSpawn)
+            {
+                // Wait for player to be fully loaded
+                while (!IsScreenFadedIn() || IsPlayerSwitchInProgress() || IsPauseMenuActive() || GetIsLoadingScreenActive())
+                {
+                    await Delay(100);
+                }
+                
+                // Additional wait to ensure everything is loaded
+                await Delay(3000);
+                
+                // Check if player ped exists and is valid
+                if (!Game.PlayerPed.Exists() || Game.PlayerPed.IsDead)
+                {
+                    // Wait a bit more and try again
+                    await Delay(2000);
+                    return;
+                }
+                
+                firstSpawn = false;
+                
+                Debug.WriteLine("[vMenu] First spawn detected, checking for default appearance...");
+                
+                // Load default character if enabled
+                if (MainMenu.MiscSettingsMenu != null && 
+                    MainMenu.MpPedCustomizationMenu != null && 
+                    MainMenu.MiscSettingsMenu.MiscRespawnDefaultCharacter && 
+                    !string.IsNullOrEmpty(GetResourceKvpString("vmenu_default_character")) && 
+                    !GetSettingsBool(Setting.vmenu_disable_spawning_as_default_character))
+                {
+                    Debug.WriteLine($"[vMenu] Loading default character: {GetResourceKvpString("vmenu_default_character")}");
+                    
+                    try
+                    {
+                        // Save current position
+                        var currentPosition = Game.PlayerPed.Position;
+                        var currentHeading = Game.PlayerPed.Heading;
+                        
+                        // Load the character
+                        await MainMenu.MpPedCustomizationMenu.SpawnThisCharacter(GetResourceKvpString("vmenu_default_character"), false);
+                        
+                        // Restore position
+                        await Delay(500);
+                        Game.PlayerPed.Position = currentPosition;
+                        Game.PlayerPed.Heading = currentHeading;
+                        
+                        Debug.WriteLine("[vMenu] Default character loaded successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[vMenu] Error loading default character: {ex.Message}");
+                    }
+                }
+                
+                // Load default weapon loadout if enabled
+                if (MainMenu.WeaponLoadoutsMenu != null && 
+                    MainMenu.WeaponLoadoutsMenu.WeaponLoadoutsSetLoadoutOnRespawn && 
+                    IsAllowed(Permission.WLEquipOnRespawn))
+                {
+                    var saveName = GetResourceKvpString("vmenu_string_default_loadout");
+                    if (!string.IsNullOrEmpty(saveName))
+                    {
+                        Debug.WriteLine($"[vMenu] Loading default weapon loadout: {saveName}");
+                        try
+                        {
+                            await SpawnWeaponLoadoutAsync(saveName, true, false, true);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[vMenu] Error loading weapon loadout: {ex.Message}");
+                        }
+                    }
+                }
+                
+                Debug.WriteLine("[vMenu] First spawn setup completed");
+            }
+            else
+            {
+                // Not first spawn anymore, just delay to reduce CPU usage
+                await Delay(5000);
+            }
+        }
         private async Task PlayerOptions()
         {
             // perms
