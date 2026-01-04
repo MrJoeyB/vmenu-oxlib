@@ -1,4 +1,5 @@
-﻿using System;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -79,36 +80,78 @@ namespace vMenuClient
             Notify.Info("Debug info: Closing import/export NUI window.");
             cb(JsonConvert.SerializeObject(new { ok = true }));
         }
+        private static bool firstSpawn = true;
 
-        private bool firstSpawn = true;
-        /// <summary>
-        /// Sets the saved character whenever the player first spawns.
-        /// </summary>
         private async void SetAppearanceOnFirstSpawn()
         {
             if (firstSpawn)
             {
-                firstSpawn = false;
-                if (MainMenu.MiscSettingsMenu != null && MainMenu.MpPedCustomizationMenu != null && MainMenu.MiscSettingsMenu.MiscRespawnDefaultCharacter && !string.IsNullOrEmpty(GetResourceKvpString("vmenu_default_character")) && !GetSettingsBool(Setting.vmenu_disable_spawning_as_default_character))
-                {
-                    await MainMenu.MpPedCustomizationMenu.SpawnThisCharacter(GetResourceKvpString("vmenu_default_character"), false);
-                }
+                // Wait for player to be fully loaded
                 while (!IsScreenFadedIn() || IsPlayerSwitchInProgress() || IsPauseMenuActive() || GetIsLoadingScreenActive())
                 {
-                    await Delay(0);
+                    await Delay(100);
                 }
-                if (MainMenu.WeaponLoadoutsMenu != null && MainMenu.WeaponLoadoutsMenu.WeaponLoadoutsSetLoadoutOnRespawn && IsAllowed(Permission.WLEquipOnRespawn))
+                
+                // Additional wait to ensure player is fully spawned
+                await Delay(2000);
+                
+                // Check if player ped exists and is valid
+                if (!Game.PlayerPed.Exists() || Game.PlayerPed.IsDead)
+                {
+                    await Delay(1000);
+                    return;
+                }
+                
+                firstSpawn = false;
+                
+                Debug.WriteLine("[vMenu] First spawn detected, setting default appearance...");
+                
+                // Check if we should restore default character
+                if (MainMenu.MiscSettingsMenu != null && 
+                    MainMenu.MpPedCustomizationMenu != null && 
+                    MainMenu.MiscSettingsMenu.MiscRespawnDefaultCharacter && 
+                    !string.IsNullOrEmpty(GetResourceKvpString("vmenu_default_character")) && 
+                    !GetSettingsBool(Setting.vmenu_disable_spawning_as_default_character))
+                {
+                    Debug.WriteLine($"[vMenu] Loading default character: {GetResourceKvpString("vmenu_default_character")}");
+                    
+                    // Save current position to restore after character change
+                    var currentPosition = Game.PlayerPed.Position;
+                    var currentHeading = Game.PlayerPed.Heading;
+                    
+                    await MainMenu.MpPedCustomizationMenu.SpawnThisCharacter(GetResourceKvpString("vmenu_default_character"), false);
+                    
+                    // Restore position after character change
+                    await Delay(100);
+                    Game.PlayerPed.Position = currentPosition;
+                    Game.PlayerPed.Heading = currentHeading;
+                    
+                    Debug.WriteLine("[vMenu] Default character loaded successfully");
+                }
+                else
+                {
+                    Debug.WriteLine("[vMenu] Not loading default character - conditions not met");
+                }
+                
+                // Wait for character to fully load
+                await Delay(1000);
+                
+                // Load default weapon loadout if enabled
+                if (MainMenu.WeaponLoadoutsMenu != null && 
+                    MainMenu.WeaponLoadoutsMenu.WeaponLoadoutsSetLoadoutOnRespawn && 
+                    IsAllowed(Permission.WLEquipOnRespawn))
                 {
                     var saveName = GetResourceKvpString("vmenu_string_default_loadout");
                     if (!string.IsNullOrEmpty(saveName))
                     {
+                        Debug.WriteLine($"[vMenu] Loading default weapon loadout: {saveName}");
                         await SpawnWeaponLoadoutAsync(saveName, true, false, true);
                     }
-
                 }
+                
+                Debug.WriteLine("[vMenu] First spawn setup completed");
             }
         }
-
         /// <summary>
         /// Sets the addon models from the addons.json file.
         /// </summary>
